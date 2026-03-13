@@ -1,0 +1,129 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const { query } = require('../db');
+const { auth, adminOnly } = require('../middleware/auth');
+const { parseFilters } = require('../utils/filters');
+
+const router = express.Router();
+
+// GET /managers — list all
+router.get('/', auth, async (req, res) => {
+  try {
+    const { rows } = await query(`
+      SELECT manager_id, full_name, initials, avatar_color, phone_number,
+             role, is_online, last_checkin_site, last_checkin_at,
+             checkin_elapsed_minutes, status, created_at
+      FROM managers WHERE status = 'Active' ORDER BY full_name
+    `);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /managers/leaderboard
+router.get('/leaderboard', auth, async (req, res) => {
+  try {
+    const { from, to, managerId } = parseFilters(req.query);
+    const params = [from, to];
+    const mgrFilter = managerId && managerId !== 'all' ? `AND m.manager_id = $${params.push(managerId)}` : '';
+
+    const { rows } = await query(`
+      SELECT
+        m.manager_id, m.full_name, m.initials, m.avatar_color,
+        COUNT(mt.meeting_id)::int        AS total_meetings,
+        ROUND(AVG(a.meeting_score)::numeric, 2) AS avg_score,
+        COALESCE(SUM(ds.calls_made),0)::int  AS calls_made,
+        COALESCE(SUM(ds.followups_completed),0)::int AS followups_done
+      FROM managers m
+      LEFT JOIN meetings mt ON mt.manager_id = m.manager_id
+        AND mt.meeting_date BETWEEN $1 AND $2
+      LEFT JOIN meeting_ai_analysis a ON a.meeting_id = mt.meeting_id
+      LEFT JOIN daily_report_snapshots ds ON ds.manager_id = m.manager_id
+        AND ds.snapshot_date BETWEEN $1 AND $2
+      WHERE m.status = 'Active' AND m.role != 'Admin' ${mgrFilter}
+      GROUP BY m.manager_id
+      ORDER BY avg_score DESC NULLS LAST
+    `, params);
+
+    const ranked = rows.map((r, i) => ({ ...r, rank: i + 1 }));
+    res.json({ success: true, data: ranked });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /managers/performance — table for dashboard
+router.get('/performance', auth, async (req, res) => {
+  try {
+    const { from, to } = parseFilters(req.query);
+
+    const { rows } = await query(`
+      SELECT
+        m.manager_id, m.full_name, m.initials, m.avatar_color,
+        COUNT(mt.meeting_id)::int AS total_meetings,
+        COUNT(mt.meeting_id) FILTER (WHERE mt.meeting_category = 'Field')::int  AS field_meetings,
+        COUNT(mt.meeting_id) FILTER (WHERE mt.meeting_category = 'Office')::int AS office_meetings,
+        COUNT(mt.meeting_id) FILTER (WHERE mt.meeting_type = 'New')::int        AS new_meetings,
+        COALESCE(SUM(mt.duration_minutes),0)::int AS total_duration_minutes,
+        ROUND(AVG(a.meeting_score)::numeric, 2)   AS avg_score
+      FROM managers m
+      LEFT JOIN meetings mt ON mt.manager_id = m.manager_id
+        AND mt.meeting_date BETWEEN $1 AND $2
+      LEFT JOIN meeting_ai_analysis a ON a.meeting_id = mt.meeting_id
+      WHERE m.status = 'Active' AND m.role != 'Admin'
+      GROUP BY m.manager_id
+      ORDER BY total_meetings DESC
+    `, [from, to]);
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /managers/:id
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const { rows } = await query(`
+      SELECT manager_id, full_name, initials, avatar_color, phone_number,
+             role, is_online, last_checkin_site, last_checkin_at, status, created_at
+      FROM managers WHERE manager_id = $1
+    `, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ success: false, message: 'Manager not found' });
+    res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /managers — admin only
+router.post('/', auth, adminOnly, async (req, res) => {
+  try {
+    const { full_name, initials, avatar_color, phone_number, password, role } = req.body;
+    const hash = await bcrypt.hash(password, 10);
+    const { rows } = await query(`
+      INSERT INTO managers (full_name, initials, avatar_color, phone_number, password_hash, role)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING manager_id, full_name, phone_number, role
+    `, [full_name, initials, avatar_color || '#6366f1', phone_number, hash, role || 'Sales Manager']);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /managers/:id
+router.put('/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const { full_name, initials, avatar_color, role, status } = req.body;
+    const { rows } = await query(`
+      UPDATE managers SET full_name=$1, initials=$2, avatar_color=$3, role=$4, status=$5
+      WHERE manager_id=$6 RETURNING manager_id, full_name, role, status
+    `, [full_name, initials, avatar_color, role, status, req.params.id]);
+    res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+module.exports = router;
