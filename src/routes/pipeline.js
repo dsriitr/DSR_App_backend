@@ -111,4 +111,3 @@ router.get('/projects', auth, async (req, res) => {
 });
 
 module.exports = router;
-```
