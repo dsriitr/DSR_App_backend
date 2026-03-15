@@ -110,4 +110,24 @@ router.get('/projects', auth, async (req, res) => {
   }
 });
 
+
+// GET /pipeline/summary
+router.get('/summary', auth, async (req, res) => {
+  try {
+    const { managerId } = req.query;
+    const params = [];
+    const mgrFilter = managerId && managerId !== 'all'
+      ? `AND l.owner_manager_id = ${params.push(managerId)}`
+      : '';
+    const st = `('Pipeline','Positive','Booking')`;
+    const [s1,s2,s3,s4] = await Promise.all([
+      query(`SELECT COALESCE(l.project_name,'Unknown') AS label, COUNT(*)::int AS count FROM leads l WHERE l.lead_status IN ${st} ${mgrFilter} GROUP BY l.project_name ORDER BY count DESC`, [...params]),
+      query(`SELECT mg.full_name AS label, COUNT(*)::int AS count FROM leads l JOIN managers mg ON mg.manager_id = l.owner_manager_id WHERE l.lead_status IN ${st} ${mgrFilter} GROUP BY mg.full_name ORDER BY count DESC`, [...params]),
+      query(`SELECT CASE WHEN l.days_no_activity >= 30 THEN 'Stuck 30d' WHEN l.days_no_activity >= 7 THEN 'Stuck 7d' ELSE 'Active' END AS label, COUNT(*)::int AS count FROM leads l WHERE l.lead_status IN ${st} ${mgrFilter} GROUP BY 1 ORDER BY count DESC`, [...params]),
+      query(`SELECT COALESCE(l.unit_type,'Unknown') AS label, COUNT(*)::int AS count FROM leads l WHERE l.lead_status IN ${st} ${mgrFilter} GROUP BY l.unit_type ORDER BY count DESC`, [...params]),
+    ]);
+    res.json({ success: true, data: { by_project: s1.rows, by_team: s2.rows, by_activity: s3.rows, by_unit_type: s4.rows } });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
 module.exports = router;

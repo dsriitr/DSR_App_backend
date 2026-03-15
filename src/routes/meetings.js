@@ -123,6 +123,7 @@ router.get('/:id', auth, async (req, res) => {
 
     const r = rows[0];
     const { rows: analysis } = await query(`SELECT * FROM meeting_ai_analysis WHERE meeting_id = $1`, [r.meeting_id]);
+    const { rows: followups } = await query(`SELECT task_type, description, due_date, priority, status FROM followups WHERE meeting_id = $1 ORDER BY followup_id ASC`, [r.meeting_id]);
 
     const meeting = {
       ...r,
@@ -130,6 +131,7 @@ router.get('/:id', auth, async (req, res) => {
       manager: { manager_id: r.manager_id, full_name: r.manager_name, initials: r.initials, avatar_color: r.avatar_color },
       project: r.project_name ? { project_name: r.project_name } : null,
       ai_analysis: analysis[0] || null,
+      followup_tasks: followups || [],
     };
 
     res.json({ success: true, data: meeting });

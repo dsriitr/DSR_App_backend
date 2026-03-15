@@ -5,6 +5,25 @@ const { parseFilters } = require('../utils/filters');
 
 const router = express.Router();
 
+
+// GET /leads/summary
+router.get('/summary', auth, async (req, res) => {
+  try {
+    const { managerId } = req.query;
+    const params = [];
+    const mgrFilter = managerId && managerId !== 'all'
+      ? `AND l.owner_manager_id = ${params.push(managerId)}`
+      : '';
+    const [s1,s2,s3,s4] = await Promise.all([
+      query(`SELECT lead_status AS label, COUNT(*)::int AS count FROM leads l WHERE 1=1 ${mgrFilter} GROUP BY lead_status ORDER BY count DESC`, [...params]),
+      query(`SELECT COALESCE(project_name,'Unknown') AS label, COUNT(*)::int AS count FROM leads l WHERE 1=1 ${mgrFilter} GROUP BY project_name ORDER BY count DESC`, [...params]),
+      query(`SELECT mg.full_name AS label, COUNT(*)::int AS count FROM leads l JOIN managers mg ON mg.manager_id = l.owner_manager_id WHERE 1=1 ${mgrFilter} GROUP BY mg.full_name ORDER BY count DESC`, [...params]),
+      query(`SELECT COALESCE(unit_type,'Unknown') AS label, COUNT(*)::int AS count FROM leads l WHERE 1=1 ${mgrFilter} GROUP BY unit_type ORDER BY count DESC`, [...params]),
+    ]);
+    res.json({ success: true, data: { by_status: s1.rows, by_project: s2.rows, by_team: s3.rows, by_unit_type: s4.rows } });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
 // GET /leads/status-distribution
 router.get('/status-distribution', auth, async (req, res) => {
   try {
