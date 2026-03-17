@@ -182,13 +182,28 @@ router.post('/', auth, async (req, res) => {
 // PUT /leads/:id
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { lead_name, phone_number, project_name, unit_type, budget_min, budget_max, hometown, profession, decision_maker } = req.body;
+    const { lead_name, phone_number, project_name, unit_type, budget_min, budget_max, hometown, profession, decision_maker, deal_value, preferences } = req.body;
     const { rows } = await query(`
       UPDATE leads SET lead_name=$1, phone_number=$2, project_name=$3, unit_type=$4,
         budget_min=$5, budget_max=$6, hometown=$7, profession=$8, decision_maker=$9,
-        updated_at=NOW()
-      WHERE lead_id=$10 RETURNING *
-    `, [lead_name, phone_number, project_name, unit_type, budget_min, budget_max, hometown, profession, decision_maker, req.params.id]);
+        deal_value=COALESCE($10, deal_value), updated_at=NOW()
+      WHERE lead_id=$11 RETURNING *
+    `, [lead_name, phone_number, project_name, unit_type, budget_min, budget_max, hometown, profession, decision_maker, deal_value, req.params.id]);
+
+    if (preferences) {
+      const p = preferences;
+      await query(`INSERT INTO lead_preferences (lead_id, unit_type, unit_size_sqft, budget_min, budget_max, budget_clarity, purchase_timeline, urgency_level, financing_mode, loan_amount, reason_for_buying, project_preference)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT (lead_id) DO UPDATE SET
+          unit_type=COALESCE($2,lead_preferences.unit_type), unit_size_sqft=COALESCE($3,lead_preferences.unit_size_sqft),
+          budget_min=COALESCE($4,lead_preferences.budget_min), budget_max=COALESCE($5,lead_preferences.budget_max),
+          budget_clarity=COALESCE($6,lead_preferences.budget_clarity), purchase_timeline=COALESCE($7,lead_preferences.purchase_timeline),
+          urgency_level=COALESCE($8,lead_preferences.urgency_level), financing_mode=COALESCE($9,lead_preferences.financing_mode),
+          loan_amount=COALESCE($10,lead_preferences.loan_amount), reason_for_buying=COALESCE($11,lead_preferences.reason_for_buying),
+          project_preference=COALESCE($12,lead_preferences.project_preference), updated_at=NOW()`,
+        [req.params.id, p.unit_type || null, p.unit_size_sqft || null, p.budget_min || null, p.budget_max || null, p.budget_clarity || null, p.purchase_timeline || null, p.urgency_level || null, p.financing_mode || null, p.loan_amount || null, p.reason_for_buying || null, p.project_preference || null]);
+    }
+
     res.json({ success: true, data: rows[0] });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
