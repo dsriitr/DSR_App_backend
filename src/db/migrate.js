@@ -377,6 +377,7 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_followups_manager ON followups(manager_id)`,
   `CREATE INDEX IF NOT EXISTS idx_followups_due ON followups(due_date)`,
   `CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_lead_preferences_lead ON lead_preferences(lead_id)`,
 ];
 
 async function migrate() {

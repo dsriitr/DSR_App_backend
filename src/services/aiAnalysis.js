@@ -37,17 +37,24 @@ Respond with ONLY valid JSON, no explanation, no markdown, no backticks:
   "confidence_level": "High or Medium or Low",
   "manager_strengths": "2-3 sentences on strengths",
   "manager_improvement": "2-3 sentences on improvements",
+  "lead_score": 7.0,
   "lead_profile": {
-    "unit_type": "2BHK or 3BHK or Plot or Villa or null",
+    "unit_type": "Plot or 2BHK Flat or 3BHK Flat or Duplex or Shop or null",
+    "unit_size_sqft": 1200,
     "budget_min": 4500000,
     "budget_max": 6000000,
+    "budget_clarity": "Clear or Vague or Not Discussed",
     "buying_timeline": "1-3 Months or 3-6 Months or 6-12 Months or null",
     "urgency_level": "High or Medium or Low or null",
     "funding_type": "Self-funded or Home Loan or Partial Loan or null",
+    "financing_mode": "Loan or Self-funded or Mixed or null",
+    "loan_amount": 3000000,
     "hometown": "city or null",
     "profession": "job title or null",
     "employment_type": "Salaried or Self-employed or Business or null",
-    "purpose": "Self-use or Investment or Both or null"
+    "purpose": "Self-use or Investment or Both or null",
+    "decision_maker_name": "name of the decision maker if mentioned or null",
+    "project_preference": "specific project name client mentioned interest in or null"
   },
   "objections": [
     {
@@ -68,7 +75,17 @@ Respond with ONLY valid JSON, no explanation, no markdown, no backticks:
   ]
 }
 
-RULES: meeting_score 8+=Super, 6-7.9=Progressive, <6=Time Waste. Be realistic not every meeting is 9/10.`;
+RULES:
+- meeting_score 8+=Super, 6-7.9=Progressive, <6=Time Waste. Be realistic not every meeting is 9/10.
+- lead_score: overall lead quality 1-10 based on budget readiness, urgency, intent signals, DM involvement.
+- Extract every piece of info the client reveals: budget, hometown, profession, family details, loan status, unit size preference, timeline.
+- budget_clarity: "Clear" if client gave specific numbers, "Vague" if approximate/unsure, "Not Discussed" if not mentioned.
+- financing_mode: "Loan" if taking home loan, "Self-funded" if paying cash, "Mixed" if combination.
+- loan_amount: numeric value if loan amount was discussed, null otherwise.
+- unit_size_sqft: approximate sqft if mentioned, null otherwise.
+- decision_maker_name: actual name of the person who makes the buying decision (e.g. "Sharma ji", "wife Priya"), null if not mentioned.
+- project_preference: if client expressed interest in a specific project by name, capture it.
+- Set null for any field not discussed in the conversation. Do not guess.`;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

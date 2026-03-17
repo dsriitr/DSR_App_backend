@@ -37,7 +37,9 @@ async function runPipeline(meetingId, filePath) {
     if (lp.hometown) { fields.push(`hometown=$${i++}`); vals.push(lp.hometown); }
     if (lp.profession) { fields.push(`profession=$${i++}`); vals.push(lp.profession); }
     if (lp.employment_type) { fields.push(`employment_type=$${i++}`); vals.push(lp.employment_type); }
+    if (lp.decision_maker_name) { fields.push(`decision_maker=$${i++}`); vals.push(lp.decision_maker_name); }
     if (analysis.dm_present !== null) { fields.push(`dm_met=$${i++}`); vals.push(analysis.dm_present); }
+    if (analysis.lead_score) { fields.push(`lead_score=$${i++}`); vals.push(analysis.lead_score); }
     if (analysis.lead_status_suggested) { fields.push(`lead_status=$${i++}`); vals.push(analysis.lead_status_suggested); }
     fields.push(`days_no_activity=$${i++}`); vals.push(0);
     fields.push(`last_meeting_or_sv_date=$${i++}`); vals.push(new Date().toISOString().split('T')[0]);
@@ -48,8 +50,8 @@ async function runPipeline(meetingId, filePath) {
       await query(`INSERT INTO lead_status_history (lead_id, old_status, new_status, changed_by_manager_id, meeting_id, change_reason) VALUES ($1,$2,$3,$4,$5,'AI suggested based on meeting analysis')`, [meeting.lead_id, meeting.lead_status, analysis.lead_status_suggested, meeting.manager_id, meetingId]);
     }
 
-    if (lp.unit_type || lp.budget_min) {
-      await query(`INSERT INTO lead_preferences (lead_id, unit_type, budget_min, budget_max, buying_timeline, urgency_level, funding_type, purpose) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (lead_id) DO UPDATE SET unit_type=COALESCE($2,lead_preferences.unit_type), budget_min=COALESCE($3,lead_preferences.budget_min), budget_max=COALESCE($4,lead_preferences.budget_max), buying_timeline=COALESCE($5,lead_preferences.buying_timeline), urgency_level=COALESCE($6,lead_preferences.urgency_level), funding_type=COALESCE($7,lead_preferences.funding_type), purpose=COALESCE($8,lead_preferences.purpose), updated_at=NOW()`, [meeting.lead_id, lp.unit_type, lp.budget_min, lp.budget_max, lp.buying_timeline, lp.urgency_level, lp.funding_type, lp.purpose]);
+    if (lp.unit_type || lp.budget_min || lp.unit_size_sqft || lp.financing_mode || lp.project_preference) {
+      await query(`INSERT INTO lead_preferences (lead_id, unit_type, unit_size_sqft, budget_min, budget_max, budget_clarity, purchase_timeline, urgency_level, financing_mode, loan_amount, reason_for_buying, project_preference, source_meeting_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (lead_id) DO UPDATE SET unit_type=COALESCE($2,lead_preferences.unit_type), unit_size_sqft=COALESCE($3,lead_preferences.unit_size_sqft), budget_min=COALESCE($4,lead_preferences.budget_min), budget_max=COALESCE($5,lead_preferences.budget_max), budget_clarity=COALESCE($6,lead_preferences.budget_clarity), purchase_timeline=COALESCE($7,lead_preferences.purchase_timeline), urgency_level=COALESCE($8,lead_preferences.urgency_level), financing_mode=COALESCE($9,lead_preferences.financing_mode), loan_amount=COALESCE($10,lead_preferences.loan_amount), reason_for_buying=COALESCE($11,lead_preferences.reason_for_buying), project_preference=COALESCE($12,lead_preferences.project_preference), source_meeting_id=$13, updated_at=NOW()`, [meeting.lead_id, lp.unit_type, lp.unit_size_sqft || null, lp.budget_min, lp.budget_max, lp.budget_clarity || null, lp.buying_timeline || null, lp.urgency_level, lp.financing_mode || lp.funding_type || null, lp.loan_amount || null, lp.purpose || null, lp.project_preference || null, meetingId]);
     }
 
     if (analysis.objections?.length > 0) {
