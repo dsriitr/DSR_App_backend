@@ -24,6 +24,68 @@ router.get('/summary', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+// GET /leads/movement
+router.get('/movement', auth, async (req, res) => {
+  try {
+    const { from, to, managerId } = parseFilters(req.query);
+    const params = [from, to];
+    const mgrFilter = managerId && managerId !== 'all'
+      ? `AND l.owner_manager_id = $${params.push(managerId)}`
+      : '';
+    const dateFilter = `h.changed_at >= $1 AND h.changed_at <= ($2::date + interval '1 day')`;
+
+    const [entered, exited, s2, s3, s4] = await Promise.all([
+      // count transitions INTO each status
+      query(`
+        SELECT h.new_status AS label, COUNT(*)::int AS count
+        FROM lead_status_history h JOIN leads l ON l.lead_id = h.lead_id
+        WHERE ${dateFilter} ${mgrFilter}
+        GROUP BY h.new_status
+      `, [...params]),
+      // count transitions OUT of each status
+      query(`
+        SELECT h.old_status AS label, COUNT(*)::int AS count
+        FROM lead_status_history h JOIN leads l ON l.lead_id = h.lead_id
+        WHERE ${dateFilter} ${mgrFilter} AND h.old_status IS NOT NULL
+        GROUP BY h.old_status
+      `, [...params]),
+      // by_project: total status changes per project
+      query(`
+        SELECT COALESCE(l.project_name, 'Unknown') AS label, COUNT(*)::int AS count
+        FROM lead_status_history h JOIN leads l ON l.lead_id = h.lead_id
+        WHERE ${dateFilter} ${mgrFilter}
+        GROUP BY l.project_name ORDER BY count DESC
+      `, [...params]),
+      // by_team: total status changes per manager
+      query(`
+        SELECT mg.full_name AS label, COUNT(*)::int AS count
+        FROM lead_status_history h JOIN leads l ON l.lead_id = h.lead_id
+        JOIN managers mg ON mg.manager_id = l.owner_manager_id
+        WHERE ${dateFilter} ${mgrFilter}
+        GROUP BY mg.full_name ORDER BY count DESC
+      `, [...params]),
+      // by_unit_type
+      query(`
+        SELECT COALESCE(l.unit_type, 'Unknown') AS label, COUNT(*)::int AS count
+        FROM lead_status_history h JOIN leads l ON l.lead_id = h.lead_id
+        WHERE ${dateFilter} ${mgrFilter}
+        GROUP BY l.unit_type ORDER BY count DESC
+      `, [...params]),
+    ]);
+
+    // Compute net = entered - exited per status
+    const enteredMap = Object.fromEntries(entered.rows.map(r => [r.label, r.count]));
+    const exitedMap = Object.fromEntries(exited.rows.map(r => [r.label, r.count]));
+    const allStatuses = [...new Set([...Object.keys(enteredMap), ...Object.keys(exitedMap)])];
+    const byStatus = allStatuses.map(s => ({
+      label: s,
+      count: (enteredMap[s] || 0) - (exitedMap[s] || 0),
+    })).sort((a, b) => Math.abs(b.count) - Math.abs(a.count));
+
+    res.json({ success: true, data: { by_status: byStatus, by_project: s2.rows, by_team: s3.rows, by_unit_type: s4.rows } });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
 // GET /leads/status-distribution
 router.get('/status-distribution', auth, async (req, res) => {
   try {
