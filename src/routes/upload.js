@@ -29,7 +29,7 @@ router.post('/recording', auth, upload.single('audio'), async (req, res) => {
       const { rows: ex } = await query(`SELECT lead_id FROM leads WHERE phone_number=$1 LIMIT 1`, [phone_number]);
       if (ex[0]) { resolvedLeadId = ex[0].lead_id; }
       else {
-        const { rows: nl } = await query(`INSERT INTO leads (lead_name, phone_number, owner_manager_id, project_name, lead_status, lead_source) VALUES ($1,$2,$3,$4,'Open','Recording') RETURNING lead_id`, [lead_name, phone_number, managerId, project_name || null]);
+        const { rows: nl } = await query(`INSERT INTO leads (lead_name, phone_number, owner_manager_id, project_name, lead_status, lead_source) VALUES ($1,$2,$3,$4,'Open','Field') RETURNING lead_id`, [lead_name, phone_number, managerId, project_name || null]);
         resolvedLeadId = nl[0].lead_id;
       }
     }
