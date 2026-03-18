@@ -20,7 +20,7 @@ router.post('/recording', auth, upload.single('audio'), async (req, res) => {
   const filePath = req.file?.path;
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No audio file' });
-    const { lead_id, lead_name, phone_number, project_id, meeting_type = 'New', duration_seconds, meeting_date, start_time } = req.body;
+    const { lead_id, lead_name, phone_number, project_name, project_id, meeting_type = 'New', duration_seconds, meeting_date, start_time, manager_id } = req.body;
     const managerId = req.manager.manager_id;
     console.log(`[Upload] From manager ${managerId}, file: ${req.file.filename}, size: ${(req.file.size/1024/1024).toFixed(2)}MB`);
 
@@ -29,15 +29,22 @@ router.post('/recording', auth, upload.single('audio'), async (req, res) => {
       const { rows: ex } = await query(`SELECT lead_id FROM leads WHERE phone_number=$1 LIMIT 1`, [phone_number]);
       if (ex[0]) { resolvedLeadId = ex[0].lead_id; }
       else {
-        const { rows: nl } = await query(`INSERT INTO leads (lead_name, phone_number, owner_manager_id, project_id, lead_status, lead_source) VALUES ($1,$2,$3,$4,'Open','Recording') RETURNING lead_id`, [lead_name, phone_number, managerId, project_id || null]);
+        const { rows: nl } = await query(`INSERT INTO leads (lead_name, phone_number, owner_manager_id, project_name, lead_status, lead_source) VALUES ($1,$2,$3,$4,'Open','Recording') RETURNING lead_id`, [lead_name, phone_number, managerId, project_name || null]);
         resolvedLeadId = nl[0].lead_id;
       }
     }
     if (!resolvedLeadId) { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); return res.status(400).json({ success: false, message: 'lead_id or lead_name+phone required' }); }
 
+    // Resolve project_id from project_name if needed
+    let resolvedProjectId = project_id ? parseInt(project_id) : null;
+    if (!resolvedProjectId && project_name) {
+      const { rows: pr } = await query(`SELECT project_id FROM projects WHERE project_name ILIKE $1 LIMIT 1`, [project_name]);
+      if (pr[0]) resolvedProjectId = pr[0].project_id;
+    }
+
     const today = new Date().toISOString().split('T')[0];
     const now = new Date().toTimeString().slice(0,5);
-    const { rows: mr } = await query(`INSERT INTO meetings (lead_id, manager_id, project_id, meeting_date, start_time, duration_minutes, meeting_type, meeting_category, recording_url, recording_duration_seconds, transcript_status, ai_analysis_status, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'Field',$8,$9,'Pending','Pending',NOW()) RETURNING meeting_id`, [resolvedLeadId, managerId, project_id || null, meeting_date || today, start_time || now, duration_seconds ? Math.round(parseInt(duration_seconds)/60) : 0, meeting_type === 'Repeat' ? 'Repeat' : 'New', filePath, duration_seconds || null]);
+    const { rows: mr } = await query(`INSERT INTO meetings (lead_id, manager_id, project_id, meeting_date, start_time, duration_minutes, meeting_type, meeting_category, recording_url, recording_duration_seconds, transcript_status, ai_analysis_status, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'Field',$8,$9,'Pending','Pending',NOW()) RETURNING meeting_id`, [resolvedLeadId, managerId, resolvedProjectId, meeting_date || today, start_time || now, duration_seconds ? Math.round(parseInt(duration_seconds)/60) : 0, meeting_type === 'Repeat' ? 'Repeat' : 'New', filePath, duration_seconds || null]);
     const meetingId = mr[0].meeting_id;
     console.log(`[Upload] Meeting created: ${meetingId}`);
 
