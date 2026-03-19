@@ -36,8 +36,8 @@ const migrations = [
     hometown         VARCHAR(100),
     profession       VARCHAR(100),
     decision_maker   VARCHAR(100),
-    lead_source      VARCHAR(50)  DEFAULT 'Other'
-                     CHECK (lead_source IN ('Facebook','Field','Reference','Call','WhatsApp','Walk-in','Other')),
+    lead_source      VARCHAR(50)  DEFAULT 'Walk-in'
+                     CHECK (lead_source IN ('Facebook','Walk-in','Field Data','Customer Reference','Broker','Newspaper Ad','Superfone','Calling')),
     lead_source_other VARCHAR(100),
     lead_status      VARCHAR(50)  DEFAULT 'Open'
                      CHECK (lead_status IN ('Open','Cold Interested','Hot Interested',
@@ -378,6 +378,11 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_followups_due ON followups(due_date)`,
   `CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_lead_preferences_lead ON lead_preferences(lead_id)`,
+
+  // -- ALTER: update lead_source constraint to add new values --
+  `ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_lead_source_check`,
+  `ALTER TABLE leads ADD CONSTRAINT leads_lead_source_check
+     CHECK (lead_source IN ('Facebook','Walk-in','Field Data','Customer Reference','Broker','Newspaper Ad','Superfone','Calling'))`,
 ];
 
 async function migrate() {
